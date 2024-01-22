@@ -1,19 +1,65 @@
-import { useSelector } from "react-redux";
+import openai from "../utils/openai";
+import { useDispatch, useSelector } from "react-redux";
 import lang from "../utils/languageConstants";
+import { useRef } from "react";
+import { API_OPTIONS } from "../utils/constants";
+import { addGptMovieResult } from "../utils/gptSlice";
 
 const GptSearchBar = () => {
 
   const langKey = useSelector((store) => store.config.lang);
+  const searchtext = useRef(null);
+  const dispatch = useDispatch();
+  const searchMovieTMDB = async (movie) => {
+    const data = await fetch("https://api.themoviedb.org/3/search/movie?query=" +
+    movie +
+    "include_adult=false&language=en-US&page=1", 
+    API_OPTIONS
+    );
+    const json = await data.json();
 
+    return json.results;
+  };
+
+  const handleGptSearchClick = async () => {
+    //console.log(searchtext.current.value);
+    // make an api call to GPT API and get Movie Results
+    const gptQuery = "Act as a Movie Recommendation System and suggest some movies for the query : " + 
+    searchtext.current.value + 
+    ". only give me the names of 5 movies, comma seperated like the example given ahead. Example Result: Gadar, Don, Golmaal, koi Mil Gaya" ;
+    const gptResults =  await openai.chat.completions.create({
+      messages: [{ role: 'user', content: gptQuery }],
+      model: 'gpt-3.5-turbo',
+    });
+    //console.log(gptResults.choices?.[0]?.message?.content);
+    // Andaz Apna Apna, Hera Pheri, Chupke Chupke, Jaane Bhi Do Yaara, Padosan
+    const gptMovies = gptResults.choices?.[0]?.message?.content.split(",");
+    // split(",") => converts this into an array 
+    //["Andaz Apna Apna", "Hera Pheri", "Chupke Chupke", "Jaane Bhi Do Yaara", "Padosan"]
+    // For each movie i will search TMBD API
+
+    const promiseArray = gptMovies.map((movie) => searchMovieTMDB(movie));
+
+    const tmbdResults = await Promise.all(promiseArray); 
+
+    dispatch(addGptMovieResult({movieNames: gptMovies, movieResults: tmbdResults}));
+  };
   return (
     <div className='pt-[10%] flex justify-center'>
-        <form className="bg-black w-1/2 grid grid-cols-12">
+        <form 
+        className="bg-black w-1/2 grid grid-cols-12"
+        onSubmit={(e) => e.preventDefault()}
+        >
             <input 
+              ref={searchtext}
               type="text"
               className="p-4 m-4 col-span-9"
               placeholder={lang[langKey].gptSearchPlaceholder}
               />
-              <button className="col-span-3 m-4 py-2 px-4 bg-red-700 text-white rounded-lg">
+              <button 
+              className="col-span-3 m-4 py-2 px-4 bg-red-700 text-white rounded-lg"
+              onClick={handleGptSearchClick}
+              >
                 {lang[langKey].search}
               </button>
         </form>
@@ -21,4 +67,4 @@ const GptSearchBar = () => {
   )
 }
 
-export default GptSearchBar
+export default GptSearchBar;
